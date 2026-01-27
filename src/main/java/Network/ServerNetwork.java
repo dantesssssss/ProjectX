@@ -53,7 +53,7 @@ public class ServerNetwork {
              PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
             System.out.println("Client connected");
-            clientSocket.setSoTimeout(30_000);
+            clientSocket.setSoTimeout(120_000);
 
 
             String line = clientIn.readLine();

@@ -20,9 +20,9 @@ public enum OS {
                     "SLEEP", "rundll32.exe powrprof.dll,SetSuspendState 0,1,0"
             );
             case MAC -> Map.of(
-                    "SHUTDOWN", "sudo shutdown -h now",
-                    "REBOOT", "sudo shutdown -r now",
-                    "SLEEP", "pmset sleepnow"
+                    "SHUTDOWN", "shutdown",
+                    "REBOOT", "restart",
+                    "SLEEP", "sleep"
             );
             case LINUX -> Map.of(
                     "SHUTDOWN", "systemctl poweroff",
@@ -39,7 +39,12 @@ public enum OS {
         if (os == WINDOWS) {
             pb = new ProcessBuilder("cmd.exe", "/c", command);
         }else if(os == MAC) {
-            pb = new ProcessBuilder("/bin/zsh", "-c", command);
+            pb = new ProcessBuilder(
+                    "osascript",
+                    "-e",
+                    "tell application \"System Events\" to restart".replace("restart", command)
+            );
+
         }else{
             pb = new ProcessBuilder("/bin/sh", "-c", command);
         }

@@ -31,12 +31,13 @@ public class ServerFunc {
                     return OS.exec(COMP_OS,CMDS.get("REBOOT")) ? "SUCCESS" : "FAIL";
                 case "SLEEP":
                     return OS.exec(COMP_OS,CMDS.get("SLEEP")) ? "SUCCESS" : "FAIL";
+                default:
+                    return "UNKNOWN COMMAND";
             }
         }catch(Exception e) {
             System.out.println("Error while executing command");
             return "Error while executing command";
         }
-        return "something went wrong";
     }
 
     }
