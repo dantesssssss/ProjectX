@@ -8,6 +8,7 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 
 public class ServerNetwork {
@@ -78,9 +79,11 @@ public class ServerNetwork {
                 clientOut.println(ServerFunc.handleCommand(cmd));
             }
 
-            System.out.println("Client disconnected");
+            System.out.println("Client disconnected\nConnection closed");
 
-        } catch (Exception e) {
+        }catch (SocketTimeoutException e) {
+            System.out.println("Client socket timed out,closing connection");
+        }catch (Exception e) {
             e.printStackTrace();
         }
     }
