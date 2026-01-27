@@ -64,7 +64,7 @@ public class ServerNetwork {
 
             if (!ServerFunc.validateToken(line)) {
                 clientOut.println("AUTH_FAIL");
-                System.out.println("AUTH_FAILED\nDisconnecting client...");
+                System.out.println("AUTH_FAILED\nClient disconnected");
                 clientSocket.close();
                 return;
             }
@@ -74,9 +74,12 @@ public class ServerNetwork {
 
 
             String cmd;
+            String response;
             while ((cmd = clientIn.readLine()) != null) {
                 System.out.println("Command received: " + cmd);
-                clientOut.println(ServerFunc.handleCommand(cmd));
+                response = ServerFunc.handleCommand(cmd);
+                System.out.println("Response: " + response);
+                clientOut.println(response);
             }
 
             System.out.println("Client disconnected\nConnection closed");
