@@ -9,7 +9,6 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.*;
 
@@ -17,23 +16,30 @@ public class ServerNetwork {
     //SOCKET FOR LISTENING TCP
     private ServerSocket tcpServerSocket = null;
     private InetAddress inetAddress;
-    private final String ID;
     private final String TOKEN;
     private volatile boolean running = true;
     private final String pass;
     ExecutorService clientPool = new ThreadPoolExecutor(0, 5, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
     private ServerErrorListener errorListener;
+    private Thread serverThread;
 
-    public ServerNetwork(String ID, String TOKEN,String pass) throws IOException {
-        this.ID = ID;
+    private ServerNetwork(String TOKEN,String pass) throws IOException {
         this.TOKEN = TOKEN;
         this.pass = pass;
-        tcpServerSocket = new ServerSocket(0);
+        this.tcpServerSocket = new ServerSocket(0);
+        this.inetAddress = InetAddress.getLocalHost();
+    }
+    public static ServerNetwork createServerNetwork(String TOKEN,String pass) throws IOException {
+        return new ServerNetwork(TOKEN, pass);
     }
 
 
+
     public void startListening() {
-         new Thread(() -> {
+        if (serverThread != null && serverThread.isAlive()) {
+            throw new IllegalStateException("Server is already listening");
+        }
+        serverThread = new Thread(() -> {
             while (running) {
                 try {
                     Socket clientSocket = tcpServerSocket.accept();
@@ -42,8 +48,8 @@ public class ServerNetwork {
                     } catch (RejectedExecutionException e) {
                         if (errorListener != null) {
                             errorListener.onClientRejected(e.getMessage());
-                            clientSocket.close();
                         }
+                        clientSocket.close();
                     }
                 } catch (IOException e) {
                     if (running && errorListener != null) {
@@ -52,15 +58,19 @@ public class ServerNetwork {
                     break;
                 }
             }
-        },"server-thread").start();
+        },"server-thread");
+        serverThread.start();
     }
 
     public void stopListening() {
-        running = false;
-        clientPool.shutdownNow();
-        try {
-            tcpServerSocket.close();
-        } catch (IOException ignored) {}
+        if (running) {
+            running = false;
+            clientPool.shutdownNow();
+            try {
+                tcpServerSocket.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     private void handleClient(Socket socket) {
@@ -105,6 +115,9 @@ public class ServerNetwork {
 
     public void onError(ServerErrorListener listener) {
         this.errorListener = listener;
+    }
+    public InetAddress getInetAddress() {
+        return inetAddress;
     }
 
     public int getPort() {
