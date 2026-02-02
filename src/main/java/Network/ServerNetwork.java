@@ -11,10 +11,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 public class ServerNetwork {
     //SOCKET FOR LISTENING TCP
@@ -40,10 +37,14 @@ public class ServerNetwork {
             while (running) {
                 try {
                     Socket clientSocket = tcpServerSocket.accept();
-                    clientPool.execute(() -> handleClient(clientSocket));
+                    try {
+                        clientPool.execute(() -> handleClient(clientSocket));
+                    } catch (RejectedExecutionException ex) {
+                        clientSocket.close();
+                    }
                 } catch (IOException e) {
                     if (running && errorListener != null) {
-                        errorListener.onAcceptError(new ServerAcceptException());
+                        errorListener.onAcceptError(new ServerAcceptException(e.getMessage()));
                     }
                     break;
                 }
@@ -53,7 +54,7 @@ public class ServerNetwork {
          t.start();
     }
 
-    public void stop() {
+    public void stopListening() {
         running = false;
         try {
             tcpServerSocket.close();
@@ -66,17 +67,15 @@ public class ServerNetwork {
              BufferedReader clientIn = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
              PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
-            System.out.println("Client connected");
             clientSocket.setSoTimeout(120_000);
-
 
             String line = clientIn.readLine();
             if (line == null) {
                 clientSocket.close();
                 return;
             }
+
             line = decrypt(line, pass);
-            System.out.println("Received: " + line);
 
 
             if (!ServerFunc.validateToken(line,TOKEN)) {
@@ -88,17 +87,14 @@ public class ServerNetwork {
             clientOut.println(encrypt("AUTH_OK",pass));
 
 
+
             String cmd;
             String response;
             while ((cmd = clientIn.readLine()) != null) {
                 cmd = decrypt(cmd, pass);
-                System.out.println("Command received: " + cmd);
                 response = ServerFunc.handleCommand(cmd);
-                System.out.println("Response: " + response);
                 clientOut.println(encrypt(response,pass));
             }
-
-            System.out.println("Client disconnected\nConnection closed");
 
         }catch (IOException e) {
             e.printStackTrace();
@@ -114,9 +110,11 @@ public class ServerNetwork {
     public int getPort() {
         return tcpServerSocket.getLocalPort();
     }
+
     private String encrypt(String line,String pass) throws EncryptionException {
         return AesGcmEncryptor.encrypt(line,pass);
     }
+
     private String decrypt(String line,String pass) throws EncryptionException {
         return AesGcmEncryptor.decrypt(line,pass);
     }
