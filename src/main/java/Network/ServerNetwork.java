@@ -21,7 +21,7 @@ public class ServerNetwork {
     private final String TOKEN;
     private volatile boolean running = true;
     private final String pass;
-    ExecutorService clientPool = new ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
+    ExecutorService clientPool = new ThreadPoolExecutor(0, 5, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
     private ServerErrorListener errorListener;
 
     public ServerNetwork(String ID, String TOKEN,String pass) throws IOException {
@@ -33,14 +33,17 @@ public class ServerNetwork {
 
 
     public void startListening() {
-         Thread t = new Thread(() -> {
+         new Thread(() -> {
             while (running) {
                 try {
                     Socket clientSocket = tcpServerSocket.accept();
                     try {
                         clientPool.execute(() -> handleClient(clientSocket));
-                    } catch (RejectedExecutionException ex) {
-                        clientSocket.close();
+                    } catch (RejectedExecutionException e) {
+                        if (errorListener != null) {
+                            errorListener.onClientRejected(e.getMessage());
+                            clientSocket.close();
+                        }
                     }
                 } catch (IOException e) {
                     if (running && errorListener != null) {
@@ -49,21 +52,20 @@ public class ServerNetwork {
                     break;
                 }
             }
-        },"server-thread");
-         t.setDaemon(true);
-         t.start();
+        },"server-thread").start();
     }
 
     public void stopListening() {
         running = false;
+        clientPool.shutdownNow();
         try {
             tcpServerSocket.close();
         } catch (IOException ignored) {}
-        clientPool.shutdownNow();
     }
 
-    private void handleClient(Socket clientSocket) {
+    private void handleClient(Socket socket) {
         try(
+             Socket clientSocket = socket;
              BufferedReader clientIn = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
              PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
@@ -71,7 +73,6 @@ public class ServerNetwork {
 
             String line = clientIn.readLine();
             if (line == null) {
-                clientSocket.close();
                 return;
             }
 
@@ -80,7 +81,6 @@ public class ServerNetwork {
 
             if (!ServerFunc.validateToken(line,TOKEN)) {
                 clientOut.println(encrypt("AUTH_FAIL",pass));
-                clientSocket.close();
                 return;
             }
 
