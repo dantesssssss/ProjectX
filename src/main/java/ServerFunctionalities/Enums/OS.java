@@ -35,21 +35,27 @@ public enum OS {
 
     public static boolean exec(OS os,String command) throws Exception {
         ProcessBuilder pb;
+        try{
 
-        if (os == WINDOWS) {
-            pb = new ProcessBuilder("cmd.exe", "/c", command);
-        }else if(os == MAC) {
-            pb = new ProcessBuilder(
-                    "osascript",
-                    "-e",
-                    "tell application \"System Events\" to restart".replace("restart", command)
-            );
+            if (os == WINDOWS) {
+                pb = new ProcessBuilder("cmd.exe", "/c", command);
+            }else if(os == MAC) {
+                pb = new ProcessBuilder(
+                        "osascript",
+                        "-e",
+                        "tell application \"System Events\" to restart".replace("restart", command)
+                );
 
-        }else{
-            pb = new ProcessBuilder("/bin/sh", "-c", command);
+            }else{
+                pb = new ProcessBuilder("/bin/sh", "-c", command);
+            }
+
+            pb.inheritIO().start();
+        }catch(Exception e){
+            e.printStackTrace();
+            System.out.println("ERROR executing " + command);
+            return false;
         }
-
-        pb.inheritIO().start();
         return true;
     }
 }

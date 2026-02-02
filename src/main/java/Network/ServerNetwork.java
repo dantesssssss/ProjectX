@@ -1,7 +1,8 @@
 package Network;
 
-import ServerFunctionalities.Enums.LOADPROP;
-import ServerFunctionalities.InfoLoader;
+import Exceptions.ServerAcceptException;
+import Exceptions.EncryptionException;
+import Network.Security.AesGcmEncryptor;
 import ServerFunctionalities.ServerFunc;
 
 import java.io.*;
@@ -10,42 +11,54 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class ServerNetwork {
     //SOCKET FOR LISTENING TCP
     private ServerSocket tcpServerSocket = null;
     private InetAddress inetAddress;
-    private final String ID = InfoLoader.load(LOADPROP.ID);
-    private final String TOKEN = InfoLoader.load(LOADPROP.TOKEN);
-    private boolean authCompleted = false;
+    private final String ID;
+    private final String TOKEN;
+    private volatile boolean running = true;
+    private final String pass;
+    ExecutorService clientPool = new ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
+    private ServerErrorListener errorListener;
 
-    public ServerNetwork() {
-        try {
-            tcpServerSocket = new ServerSocket(0);
-            startListening();
-            System.out.println("Server started");
-            System.out.println("IP: " + tcpServerSocket.getInetAddress() + ":" + tcpServerSocket.getLocalPort());
-            System.out.println("Token: " + TOKEN + "\nId: " + ID);
-        }catch (IOException e) {
-            e.printStackTrace();
-        }
+    public ServerNetwork(String ID, String TOKEN,String pass) throws IOException {
+        this.ID = ID;
+        this.TOKEN = TOKEN;
+        this.pass = pass;
+        tcpServerSocket = new ServerSocket(0);
     }
 
 
-    private void startListening() {
-        new Thread(() -> {
-                Socket clientSocket = null;
-                while (true) {
-                    try {
-                        clientSocket = tcpServerSocket.accept();
-                    } catch (IOException e) {
-                        System.out.println("Error accepting client connection");
-                        e.printStackTrace();
-                        System.exit(1);
+    public void startListening() {
+         Thread t = new Thread(() -> {
+            while (running) {
+                try {
+                    Socket clientSocket = tcpServerSocket.accept();
+                    clientPool.execute(() -> handleClient(clientSocket));
+                } catch (IOException e) {
+                    if (running && errorListener != null) {
+                        errorListener.onAcceptError(new ServerAcceptException());
                     }
-                    handleClient(clientSocket);
+                    break;
+                }
             }
-        }).start();
+        },"server-thread");
+         t.setDaemon(true);
+         t.start();
+    }
+
+    public void stop() {
+        running = false;
+        try {
+            tcpServerSocket.close();
+        } catch (IOException ignored) {}
+        clientPool.shutdownNow();
     }
 
     private void handleClient(Socket clientSocket) {
@@ -58,54 +71,53 @@ public class ServerNetwork {
 
 
             String line = clientIn.readLine();
+            if (line == null) {
+                clientSocket.close();
+                return;
+            }
+            line = decrypt(line, pass);
             System.out.println("Received: " + line);
 
-            if (line == null) return;
 
-            if (!ServerFunc.validateToken(line)) {
-                clientOut.println("AUTH_FAIL");
-                System.out.println("AUTH_FAILED\nClient disconnected");
+            if (!ServerFunc.validateToken(line,TOKEN)) {
+                clientOut.println(encrypt("AUTH_FAIL",pass));
                 clientSocket.close();
                 return;
             }
 
-            clientOut.println("AUTH_OK");
-            System.out.println("AUTH_OK");
+            clientOut.println(encrypt("AUTH_OK",pass));
 
 
             String cmd;
             String response;
             while ((cmd = clientIn.readLine()) != null) {
+                cmd = decrypt(cmd, pass);
                 System.out.println("Command received: " + cmd);
                 response = ServerFunc.handleCommand(cmd);
                 System.out.println("Response: " + response);
-                clientOut.println(response);
+                clientOut.println(encrypt(response,pass));
             }
 
             System.out.println("Client disconnected\nConnection closed");
 
-        }catch (SocketTimeoutException e) {
-            System.out.println("Client socket timed out,closing connection");
-        }catch (Exception e) {
+        }catch (IOException e) {
+            e.printStackTrace();
+        }catch (EncryptionException e) {
             e.printStackTrace();
         }
     }
 
-    public void setInetAddress(InetAddress inetAddress) {
-        this.inetAddress = inetAddress;
+    public void onError(ServerErrorListener listener) {
+        this.errorListener = listener;
     }
 
-    public InetAddress getInetAddress() {
-        return inetAddress;
-    }
     public int getPort() {
         return tcpServerSocket.getLocalPort();
     }
-
-    public ServerSocket getTcpServerSocket() {
-        return tcpServerSocket;
+    private String encrypt(String line,String pass) throws EncryptionException {
+        return AesGcmEncryptor.encrypt(line,pass);
     }
-    public void setTcpServerSocket(ServerSocket tcpServerSocket) {
-        this.tcpServerSocket = tcpServerSocket;
+    private String decrypt(String line,String pass) throws EncryptionException {
+        return AesGcmEncryptor.decrypt(line,pass);
     }
 }
