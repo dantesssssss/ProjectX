@@ -1,6 +1,6 @@
 package ServerFunctionalities;
 
-import ServerFunctionalities.Enums.LOADPROP;
+import ServerFunctionalities.Enums.LoadProp;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -12,7 +12,7 @@ public class InfoLoader {
 
     private static final Path path = Path.of("info/info.txt");
 
-    public static String load(LOADPROP loadProp) {
+    public static String load(LoadProp loadProp) {
         String askedInfo = null;
         try(BufferedReader br = new BufferedReader(new FileReader(path.toFile()))) {
             String line;
@@ -29,7 +29,7 @@ public class InfoLoader {
                             line = line.replace("ID :", "").trim();
                             if("".equals(line)){
                              askedInfo = UUID.randomUUID().toString();
-                             write(LOADPROP.ID, askedInfo);
+                             write(LoadProp.ID, askedInfo);
                             }else{
                              askedInfo = line;
                             }
@@ -48,7 +48,7 @@ public class InfoLoader {
         return null;
     }
 
-    public static void write(LOADPROP loadProp, String info) {
+    public static void write(LoadProp loadProp, String info) {
         try{
             List<String> lines = Files.readAllLines(path);
 

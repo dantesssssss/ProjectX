@@ -3,6 +3,7 @@ package Network;
 import Exceptions.ServerAcceptException;
 import Exceptions.EncryptionException;
 import Network.Security.AesGcmEncryptor;
+import ServerFunctionalities.Enums.ResponseMessages;
 import ServerFunctionalities.ServerFunc;
 
 import java.io.*;
@@ -13,26 +14,47 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.*;
 
 public class ServerNetwork {
-    //SOCKET FOR LISTENING TCP
-    private ServerSocket tcpServerSocket = null;
-    private InetAddress inetAddress;
+    private final ServerSocket tcpServerSocket;
+    private final InetAddress inetAddress;
     private final String TOKEN;
+    private final String ID;
     private volatile boolean running = true;
-    private final String pass;
-    ExecutorService clientPool = new ThreadPoolExecutor(0, 5, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
-    private ServerErrorListener errorListener;
+    private volatile String pass;
+    ExecutorService clientPool;
+    private volatile ServerErrorListener errorListener;
     private Thread serverThread;
+    private volatile boolean pairingMode;
 
-    private ServerNetwork(String TOKEN,String pass) throws IOException {
+
+    public ServerNetwork(String TOKEN,String ID,String pass,boolean pairingMode) throws IOException {
         this.TOKEN = TOKEN;
         this.pass = pass;
         this.tcpServerSocket = new ServerSocket(0);
+        //it's the best you can do to get IP of server,it may be buggy in case of VPN
         this.inetAddress = InetAddress.getLocalHost();
+        this.ID = ID;
+        this.pairingMode = pairingMode;
+        if (this.pairingMode) {
+            clientPool = new ThreadPoolExecutor(0,1,30,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+        }else{
+            clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+        }
     }
-    public static ServerNetwork createServerNetwork(String TOKEN,String pass) throws IOException {
-        return new ServerNetwork(TOKEN, pass);
+    //FOR TESTS
+    public ServerNetwork(String TOKEN,String ID,String pass,boolean pairingMode,int port) throws IOException {
+        this.TOKEN = TOKEN;
+        this.pass = pass;
+        this.tcpServerSocket = new ServerSocket(port);
+        //it's the best you can do to get IP of server,it may be buggy in case of VPN
+        this.inetAddress = InetAddress.getLocalHost();
+        this.ID = ID;
+        this.pairingMode = pairingMode;
+        if (this.pairingMode) {
+            clientPool = new ThreadPoolExecutor(0,1,30,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+        }else{
+            clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+        }
     }
-
 
 
     public void startListening() {
@@ -44,7 +66,11 @@ public class ServerNetwork {
                 try {
                     Socket clientSocket = tcpServerSocket.accept();
                     try {
-                        clientPool.execute(() -> handleClient(clientSocket));
+                        if (pairingMode) {
+                            clientPool.execute(() -> handlePairingClient(clientSocket));
+                        } else {
+                            clientPool.execute(() -> handleClient(clientSocket));
+                        }
                     } catch (RejectedExecutionException e) {
                         if (errorListener != null) {
                             errorListener.onClientRejected(e.getMessage());
@@ -73,6 +99,27 @@ public class ServerNetwork {
         }
     }
 
+    private synchronized void switchToNormalMode() {
+        if (!pairingMode) {
+            return;
+        }
+
+        pairingMode = false;
+
+        ExecutorService oldPool = clientPool;
+
+
+        new Thread(() -> {
+            oldPool.shutdown();
+            try {
+                oldPool.awaitTermination(10, TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+                oldPool.shutdownNow();
+            }
+        }).start();
+        clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+    }
+
     private void handleClient(Socket socket) {
         try(
              Socket clientSocket = socket;
@@ -86,30 +133,84 @@ public class ServerNetwork {
                 return;
             }
 
-            line = decrypt(line, pass);
+            line = AesGcmEncryptor.decrypt(line, pass);
 
 
             if (!ServerFunc.validateToken(line,TOKEN)) {
-                clientOut.println(encrypt("AUTH_FAIL",pass));
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_FAIL.toString(),pass));
                 return;
             }
 
-            clientOut.println(encrypt("AUTH_OK",pass));
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_OK.toString(),pass));
 
 
 
             String cmd;
             String response;
             while ((cmd = clientIn.readLine()) != null) {
-                cmd = decrypt(cmd, pass);
+                cmd = AesGcmEncryptor.decrypt(cmd, pass);
                 response = ServerFunc.handleCommand(cmd);
-                clientOut.println(encrypt(response,pass));
+                clientOut.println(AesGcmEncryptor.encrypt(response,pass));
             }
 
         }catch (IOException e) {
             e.printStackTrace();
         }catch (EncryptionException e) {
+            if(errorListener != null) {
+                errorListener.onEncryptionError(e);
+            }
+        }
+    }
+
+
+    private void handlePairingClient(Socket socket){
+        try(
+                Socket clientSocket = socket;
+                BufferedReader clientIn = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
+                PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
+        ){
+            clientSocket.setSoTimeout(120_000);
+            String line = clientIn.readLine();
+            if (line == null) {
+                return;
+            }
+            try {
+                line = AesGcmEncryptor.decrypt(line, pass);
+            }catch (EncryptionException e) {
+                clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT.toString());
+                return;
+            }
+
+
+            if (!line.trim().equals(TOKEN)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(),pass));
+                return;
+            }
+
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
+
+            line = clientIn.readLine();
+
+            if (line == null) {
+                return;
+            }
+            line = AesGcmEncryptor.decrypt(line, pass);
+
+            if(!line.trim().equals(ID)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_ID.toString(),pass));
+                return;
+            }
+
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
+
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(),pass));
+            switchToNormalMode();
+        }catch (IOException e) {
             e.printStackTrace();
+        }catch (EncryptionException e) {
+            if(errorListener != null) {
+                errorListener.onEncryptionError(e);
+            }
         }
     }
 
@@ -119,16 +220,10 @@ public class ServerNetwork {
     public InetAddress getInetAddress() {
         return inetAddress;
     }
-
     public int getPort() {
         return tcpServerSocket.getLocalPort();
     }
-
-    private String encrypt(String line,String pass) throws EncryptionException {
-        return AesGcmEncryptor.encrypt(line,pass);
-    }
-
-    private String decrypt(String line,String pass) throws EncryptionException {
-        return AesGcmEncryptor.decrypt(line,pass);
+    public void setPassword(String password) {
+        this.pass = password;
     }
 }

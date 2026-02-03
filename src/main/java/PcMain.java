@@ -1,13 +1,13 @@
 import Network.ServerNetwork;
 import Network.UdpDiscoveryServer;
-import ServerFunctionalities.Enums.LOADPROP;
+import ServerFunctionalities.Enums.LoadProp;
 import ServerFunctionalities.InfoLoader;
 
 import java.net.InetAddress;
 
 public class PcMain {
     public static void main(String[] args) throws Exception {
-        ServerNetwork tcp = ServerNetwork.createServerNetwork(InfoLoader.load(LOADPROP.TOKEN),"horsenigler94");
+        ServerNetwork tcp = new ServerNetwork(InfoLoader.load(LoadProp.TOKEN),InfoLoader.load(LoadProp.ID),"horsenigler94",true);
         tcp.startListening();
         System.out.println("TCP server started");
         UdpDiscoveryServer udp = new UdpDiscoveryServer(tcp.getPort());

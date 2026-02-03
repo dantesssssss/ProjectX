@@ -1,3 +1,3 @@
 package ServerFunctionalities.Enums;
 
-public enum LOADPROP {TOKEN,ID,}
+public enum LoadProp {TOKEN,ID,}

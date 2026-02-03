@@ -2,17 +2,17 @@ package ServerFunctionalities.Enums;
 
 import java.util.Map;
 
-public enum OS {
+public enum Os {
     WINDOWS, MAC, LINUX, OTHER;
 
-    public static OS detect() {
+    public static Os detect() {
         String os = System.getProperty("os.name").toLowerCase();
         if (os.contains("win")) return WINDOWS;
         if (os.contains("mac")) return MAC;
         if (os.contains("nix") || os.contains("nux")) return LINUX;
         return OTHER;
     }
-    public static Map<String, String> getCmds(OS os) {
+    public static Map<String, String> getCmds(Os os) {
         return switch (os) {
             case WINDOWS -> Map.of(
                     "SHUTDOWN", "shutdown /s /t 0",
@@ -33,7 +33,7 @@ public enum OS {
         };
     }
 
-    public static boolean exec(OS os,String command) throws Exception {
+    public static boolean exec(Os os, String command) throws Exception {
         ProcessBuilder pb;
         try{
 
