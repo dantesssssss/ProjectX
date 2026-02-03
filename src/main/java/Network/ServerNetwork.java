@@ -225,8 +225,6 @@ public class ServerNetwork {
             if(errorListener != null) {
                 errorListener.onEncryptionError(e);
             }
-        }finally {
-            clients.remove(socket);
         }
     }
 
