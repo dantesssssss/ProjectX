@@ -1,8 +1,8 @@
 package Network;
 
-import Exceptions.ServerAcceptException;
 import Exceptions.EncryptionException;
 import Network.Security.AesGcmEncryptor;
+import ServerFunctionalities.Enums.ExceptionServerMessages;
 import ServerFunctionalities.Enums.ResponseMessages;
 import ServerFunctionalities.ServerFunc;
 
@@ -10,6 +10,7 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -22,7 +23,7 @@ public class ServerNetwork {
     private volatile boolean running = true;
     private volatile String pass;
     ExecutorService clientPool;
-    private volatile ServerErrorListener errorListener;
+    private volatile ServerListener serverListener;
     private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
     private Thread serverThread;
     private volatile boolean pairingMode;
@@ -33,19 +34,20 @@ public class ServerNetwork {
         this.pass = pass;
         this.tcpServerSocket = new ServerSocket(0);
         //it's the best you can do to get IP of server,it may be buggy in case of VPN
-        this.inetAddress = InetAddress.getLocalHost();
+        this.inetAddress =  InetAddress.getLocalHost();
         this.ID = ID;
         this.pairingMode = pairingMode;
         if (this.pairingMode) {
-            clientPool = new ThreadPoolExecutor(0,1,30,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+            clientPool = new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
         }else{
-            clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+            clientPool = new ThreadPoolExecutor(1,2,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
         }
     }
 
     public void startListening() {
         if (serverThread != null && serverThread.isAlive()) {
-            throw new IllegalStateException("Server is already listening");
+            serverListener.onException(ExceptionServerMessages.LISTENING_ALREADY_STARTED.toString());
+            return;
         }
         serverThread = new Thread(() -> {
             while (running) {
@@ -58,14 +60,13 @@ public class ServerNetwork {
                             clientPool.execute(() -> handleClient(clientSocket));
                         }
                     } catch (RejectedExecutionException e) {
-                        if (errorListener != null) {
-                            errorListener.onClientRejected(e.getMessage());
-                        }
+                        throwException(ExceptionServerMessages.CLIENT_REJECTED_MAXIMUM_CLIENT_CAPACITY_REACHED);
+
                         clientSocket.close();
                     }
                 } catch (IOException e) {
-                    if (running && errorListener != null) {
-                        errorListener.onAcceptError(new ServerAcceptException(e.getMessage()));
+                    if (running) {
+                        serverListener.onException(ExceptionServerMessages.NETWORK_EXCEPTION.toString());
                     }
                     break;
                 }
@@ -83,8 +84,7 @@ public class ServerNetwork {
                 for (Socket socket : clients) {
                     socket.close();
                 }
-            } catch (IOException ignored) {
-            }
+            } catch (IOException ignored) {}
         }
     }
 
@@ -106,7 +106,7 @@ public class ServerNetwork {
                 oldPool.shutdownNow();
             }
         }).start();
-        clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
+        clientPool = new ThreadPoolExecutor(1,2,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
     }
 
     private void handleClient(Socket socket) {
@@ -115,8 +115,8 @@ public class ServerNetwork {
              BufferedReader clientIn = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
              PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
-            clientSocket.setSoTimeout(120_000);
             clients.add(clientSocket);
+            clientSocket.setSoTimeout(120_000);
 
             String line = clientIn.readLine();
             if (line == null) {
@@ -136,19 +136,21 @@ public class ServerNetwork {
             String cmd;
             String response;
             while ((cmd = clientIn.readLine()) != null) {
-                cmd = AesGcmEncryptor.decrypt(cmd, pass);
-                response = ServerFunc.handleCommand(cmd);
-                clientOut.println(AesGcmEncryptor.encrypt(response,pass));
+                try {
+                    cmd = AesGcmEncryptor.decrypt(cmd, pass);
+                    response = ServerFunc.handleCommand(cmd);
+                    clientOut.println(AesGcmEncryptor.encrypt(response,pass));
+                }catch (EncryptionException e) {
+                    clientOut.println(ResponseMessages.ENCRYPTION_EXCEPTION);
+                    break;
+                }
             }
-            System.out.println("client disconnected");
+        }catch (SocketTimeoutException ignored){
+
         }catch (IOException e) {
-            if (running) {
-                e.printStackTrace();
-            }
+            throwException(ExceptionServerMessages.NETWORK_EXCEPTION);
         }catch (EncryptionException e) {
-            if(errorListener != null) {
-                errorListener.onEncryptionError(e);
-            }
+            throwException(ExceptionServerMessages.ENCRYPTION_EXCEPTION);
         }finally {
             clients.remove(socket);
         }
@@ -161,8 +163,8 @@ public class ServerNetwork {
                 BufferedReader clientIn = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
                 PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
-            clientSocket.setSoTimeout(120_000);
             clients.add(clientSocket);
+            clientSocket.setSoTimeout(120_000);
             String line = clientIn.readLine();
             if (line == null) {
                 return;
@@ -171,12 +173,14 @@ public class ServerNetwork {
                 line = AesGcmEncryptor.decrypt(line, pass);
             }catch (EncryptionException e) {
                 clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT);
+                serverListener.onPairing(false);
                 return;
             }
 
 
             if (!line.trim().equals(TOKEN)) {
                 clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(),pass));
+                serverListener.onPairing(false);
                 return;
             }
 
@@ -191,27 +195,28 @@ public class ServerNetwork {
 
             if(!line.trim().equals(ID)) {
                 clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_ID.toString(),pass));
+                serverListener.onPairing(false);
                 return;
             }
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(),pass));
+            serverListener.onPairing(true);
             clients.remove(clientSocket);
             switchToNormalMode();
         }catch (IOException e) {
             if (running) {
-                e.printStackTrace();
+                serverListener.onPairing(false);
+                throwException(ExceptionServerMessages.NETWORK_EXCEPTION);
             }
         }catch (EncryptionException e) {
-            if(errorListener != null) {
-                errorListener.onEncryptionError(e);
-            }
+            throwException(ExceptionServerMessages.ENCRYPTION_EXCEPTION);
         }
     }
 
-    public void onError(ServerErrorListener listener) {
-        this.errorListener = listener;
+    public void setServerListener(ServerListener listener) {
+        this.serverListener = listener;
     }
     public InetAddress getInetAddress() {
         return inetAddress;
@@ -221,5 +226,10 @@ public class ServerNetwork {
     }
     public void setPassword(String password) {
         this.pass = password;
+    }
+    private void throwException(ExceptionServerMessages message){
+        if (serverListener != null) {
+            serverListener.onException(message.toString());
+        }
     }
 }
