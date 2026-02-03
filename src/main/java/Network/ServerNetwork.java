@@ -11,6 +11,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import java.util.concurrent.*;
 
 public class ServerNetwork {
@@ -22,6 +23,7 @@ public class ServerNetwork {
     private volatile String pass;
     ExecutorService clientPool;
     private volatile ServerErrorListener errorListener;
+    private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
     private Thread serverThread;
     private volatile boolean pairingMode;
 
@@ -94,6 +96,9 @@ public class ServerNetwork {
             clientPool.shutdownNow();
             try {
                 tcpServerSocket.close();
+                for (Socket socket : clients) {
+                    socket.close();
+                }
             } catch (IOException ignored) {
             }
         }
@@ -127,6 +132,7 @@ public class ServerNetwork {
              PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
             clientSocket.setSoTimeout(120_000);
+            clients.add(clientSocket);
 
             String line = clientIn.readLine();
             if (line == null) {
@@ -152,13 +158,16 @@ public class ServerNetwork {
                 response = ServerFunc.handleCommand(cmd);
                 clientOut.println(AesGcmEncryptor.encrypt(response,pass));
             }
-
         }catch (IOException e) {
-            e.printStackTrace();
+            if (running) {
+                e.printStackTrace();
+            }
         }catch (EncryptionException e) {
             if(errorListener != null) {
                 errorListener.onEncryptionError(e);
             }
+        }finally {
+            clients.remove(socket);
         }
     }
 
@@ -170,6 +179,7 @@ public class ServerNetwork {
                 PrintWriter clientOut = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)
         ){
             clientSocket.setSoTimeout(120_000);
+            clients.add(clientSocket);
             String line = clientIn.readLine();
             if (line == null) {
                 return;
@@ -204,13 +214,18 @@ public class ServerNetwork {
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(),pass));
+            clients.remove(clientSocket);
             switchToNormalMode();
         }catch (IOException e) {
-            e.printStackTrace();
+            if (running) {
+                e.printStackTrace();
+            }
         }catch (EncryptionException e) {
             if(errorListener != null) {
                 errorListener.onEncryptionError(e);
             }
+        }finally {
+            clients.remove(socket);
         }
     }
 

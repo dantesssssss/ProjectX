@@ -21,11 +21,11 @@ public class ServerFunc {
 
     public static String handleCommand(String line) {
         if (line.split(" ").length != 1)
-            return "no prop cmd found";
+            return "UNKNOWN_COMMAND";
         try {
             return switch (line) {
                 case "SHUTDOWN", "REBOOT", "SLEEP" -> Os.exec(COMP_OS, CMDS.get(line)) ? "SUCCESS" : "FAIL";
-                default -> "UNKNOWN COMMAND";
+                default -> "UNKNOWN_COMMAND";
             };
         }catch(Exception e) {
             System.out.println("Error while executing command");
