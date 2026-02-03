@@ -12,7 +12,7 @@ public class PcMain {
         System.out.println("TCP server started");
         UdpDiscoveryServer udp = new UdpDiscoveryServer(tcp.getPort());
         System.out.println("UDP pc discovery Server Started");
-        System.out.println(InetAddress.getLocalHost().getHostAddress());
+        System.out.println(InetAddress.getLocalHost());
 
 
         //System.out.println(System.getProperty("os.name").toLowerCase());
