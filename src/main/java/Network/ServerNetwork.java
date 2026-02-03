@@ -158,6 +158,7 @@ public class ServerNetwork {
                 response = ServerFunc.handleCommand(cmd);
                 clientOut.println(AesGcmEncryptor.encrypt(response,pass));
             }
+            System.out.println("client disconnected");
         }catch (IOException e) {
             if (running) {
                 e.printStackTrace();
@@ -187,7 +188,7 @@ public class ServerNetwork {
             try {
                 line = AesGcmEncryptor.decrypt(line, pass);
             }catch (EncryptionException e) {
-                clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT.toString());
+                clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT);
                 return;
             }
 
