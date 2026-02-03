@@ -42,22 +42,6 @@ public class ServerNetwork {
             clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
         }
     }
-    //FOR TESTS
-    public ServerNetwork(String TOKEN,String ID,String pass,boolean pairingMode,int port) throws IOException {
-        this.TOKEN = TOKEN;
-        this.pass = pass;
-        this.tcpServerSocket = new ServerSocket(port);
-        //it's the best you can do to get IP of server,it may be buggy in case of VPN
-        this.inetAddress = InetAddress.getLocalHost();
-        this.ID = ID;
-        this.pairingMode = pairingMode;
-        if (this.pairingMode) {
-            clientPool = new ThreadPoolExecutor(0,1,30,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
-        }else{
-            clientPool = new ThreadPoolExecutor(0,5,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
-        }
-    }
-
 
     public void startListening() {
         if (serverThread != null && serverThread.isAlive()) {
@@ -148,8 +132,6 @@ public class ServerNetwork {
             }
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_OK.toString(),pass));
-
-
 
             String cmd;
             String response;
