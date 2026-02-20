@@ -1,7 +1,6 @@
 package Network;
 
 import ServerFunctionalities.Enums.LoadProp;
-import ServerFunctionalities.InfoLoader;
 
 import java.net.*;
 
@@ -9,10 +8,11 @@ public class UdpDiscoveryServer {
 
     private static final int DISCOVERY_PORT = 9999;
     private final int tcpPort;
-    String pcId = InfoLoader.load(LoadProp.ID);
+    private final String pcId;
 
-    public UdpDiscoveryServer(int tcpPort) {
+    public UdpDiscoveryServer(int tcpPort, String pcId) {
         this.tcpPort = tcpPort;
+        this.pcId = pcId;
         start();
 
     }

@@ -22,7 +22,7 @@ public class ServerNetwork {
     private final String ID;
     private volatile boolean running = true;
     private volatile String pass;
-    ExecutorService clientPool;
+    private ExecutorService clientPool;
     private volatile ServerListener serverListener;
     private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
     private Thread serverThread;

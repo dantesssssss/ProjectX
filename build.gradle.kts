@@ -1,13 +1,20 @@
 plugins {
-    id("java")
+    `java-library`
+    `maven-publish`
 }
 
-group = "pj"
-version = "1.0-SNAPSHOT"
+group = "io.github.daniilaleshkivskyi"
+version = "0.0.9"
+
 
 repositories {
     mavenCentral()
 }
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
 
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
@@ -16,4 +23,27 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            groupId = "io.github.daniilaleshkivskyi"
+            artifactId = "projectx"
+            version = "0.0.9"
+            from(components["java"])
+        }
+    }
+
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/DaniilAleshkivskyi/ProjectX")
+            credentials {
+                username = project.findProperty("gpr.user") as String?
+                    ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String?
+                    ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }
