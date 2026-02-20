@@ -51,7 +51,7 @@ public class UdpDiscoveryServer {
         });
         waitingThread.start();
     }
-    public void stop() {
+    public void stopListening() {
         waitingThread.interrupt();
     }
 
