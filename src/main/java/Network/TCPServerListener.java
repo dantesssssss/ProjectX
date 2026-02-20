@@ -1,6 +1,6 @@
 package Network;
 
-public interface ServerListener {
+public interface TCPServerListener {
     void onException(String message);
     void onPairing(boolean success);
 }

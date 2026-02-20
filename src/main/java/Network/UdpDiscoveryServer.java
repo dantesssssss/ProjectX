@@ -1,24 +1,22 @@
 package Network;
 
-import ServerFunctionalities.Enums.LoadProp;
 
 import java.net.*;
 
 public class UdpDiscoveryServer {
 
     private static final int DISCOVERY_PORT = 9999;
-    private final int tcpPort;
-    private final String pcId;
+    private int tcpPort;
+    private String pcUID;
+    private static Thread waitingThread;
 
-    public UdpDiscoveryServer(int tcpPort, String pcId) {
+    public UdpDiscoveryServer(int tcpPort, String pcUID) {
         this.tcpPort = tcpPort;
-        this.pcId = pcId;
-        start();
-
+        this.pcUID = pcUID;
     }
 
-    private void start() {
-        new Thread(() -> {
+    public void startListening() {
+        waitingThread = new Thread(() -> {
             try (DatagramSocket socket = new DatagramSocket(DISCOVERY_PORT)) {
                 byte[] buffer = new byte[512];
 
@@ -27,12 +25,12 @@ public class UdpDiscoveryServer {
                     socket.receive(packet);
 
                     String msg = new String(packet.getData(), 0, packet.getLength());
-                    System.out.println("Received packet from " + packet.getSocketAddress() + ": " + msg);
                     if (msg.equals("DISCOVER_PC")) {
-
-                        String pcName = InetAddress.getLocalHost().getHostName().trim().replaceAll(" ", "");
-
-                        String response = "PC_FOUND|" + "id=" + pcId + "|name=" + pcName + "|port=" + tcpPort;
+                        String response = "{" +
+                                "\"RESPONSE\":"+"\"PC_FOUND\","+
+                                "\"UID\":" + "\"" + pcUID + "\"," +
+                                "\"PORT\":" + "\"" + tcpPort + "\"" +
+                                "}";
                         byte[] respData = response.getBytes();
 
                         DatagramPacket responsePacket = new DatagramPacket(
@@ -50,6 +48,17 @@ public class UdpDiscoveryServer {
                 e.printStackTrace();
                 System.exit(1);
             }
-        }).start();
+        });
+        waitingThread.start();
+    }
+    public void stop() {
+        waitingThread.interrupt();
+    }
+
+    public void changeUID(String uid) {
+        pcUID = uid;
+    }
+    public void changePort(int port) {
+        tcpPort = port;
     }
 }

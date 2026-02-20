@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.*;
 
-public class ServerNetwork {
+public class TCPServer {
     private final ServerSocket tcpServerSocket;
     private final InetAddress inetAddress;
     private final String TOKEN;
@@ -23,13 +23,13 @@ public class ServerNetwork {
     private volatile boolean running = true;
     private volatile String pass;
     private ExecutorService clientPool;
-    private volatile ServerListener serverListener;
+    private volatile TCPServerListener TCPServerListener;
     private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
     private Thread serverThread;
     private volatile boolean pairingMode;
 
 
-    public ServerNetwork(String TOKEN,String ID,String pass,boolean pairingMode) throws IOException {
+    public TCPServer(String TOKEN, String ID, String pass, boolean pairingMode) throws IOException {
         this.TOKEN = TOKEN;
         this.pass = pass;
         this.tcpServerSocket = new ServerSocket(0);
@@ -46,7 +46,7 @@ public class ServerNetwork {
 
     public void startListening() {
         if (serverThread != null && serverThread.isAlive()) {
-            serverListener.onException(ExceptionServerMessages.LISTENING_ALREADY_STARTED.toString());
+            TCPServerListener.onException(ExceptionServerMessages.LISTENING_ALREADY_STARTED.toString());
             return;
         }
         serverThread = new Thread(() -> {
@@ -66,7 +66,7 @@ public class ServerNetwork {
                     }
                 } catch (IOException e) {
                     if (running) {
-                        serverListener.onException(ExceptionServerMessages.NETWORK_EXCEPTION.toString());
+                        TCPServerListener.onException(ExceptionServerMessages.NETWORK_EXCEPTION.toString());
                     }
                     break;
                 }
@@ -173,14 +173,14 @@ public class ServerNetwork {
                 line = AesGcmEncryptor.decrypt(line, pass);
             }catch (EncryptionException e) {
                 clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT);
-                serverListener.onPairing(false);
+                TCPServerListener.onPairing(false);
                 return;
             }
 
 
             if (!line.trim().equals(TOKEN)) {
                 clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(),pass));
-                serverListener.onPairing(false);
+                TCPServerListener.onPairing(false);
                 return;
             }
 
@@ -195,19 +195,19 @@ public class ServerNetwork {
 
             if(!line.trim().equals(ID)) {
                 clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_ID.toString(),pass));
-                serverListener.onPairing(false);
+                TCPServerListener.onPairing(false);
                 return;
             }
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(),pass));
-            serverListener.onPairing(true);
+            TCPServerListener.onPairing(true);
             clients.remove(clientSocket);
             switchToNormalMode();
         }catch (IOException e) {
             if (running) {
-                serverListener.onPairing(false);
+                TCPServerListener.onPairing(false);
                 throwException(ExceptionServerMessages.NETWORK_EXCEPTION);
             }
         }catch (EncryptionException e) {
@@ -215,8 +215,8 @@ public class ServerNetwork {
         }
     }
 
-    public void setServerListener(ServerListener listener) {
-        this.serverListener = listener;
+    public void setTCPServerListener(TCPServerListener listener) {
+        this.TCPServerListener = listener;
     }
     public InetAddress getInetAddress() {
         return inetAddress;
@@ -228,8 +228,8 @@ public class ServerNetwork {
         this.pass = password;
     }
     private void throwException(ExceptionServerMessages message){
-        if (serverListener != null) {
-            serverListener.onException(message.toString());
+        if (TCPServerListener != null) {
+            TCPServerListener.onException(message.toString());
         }
     }
 }
