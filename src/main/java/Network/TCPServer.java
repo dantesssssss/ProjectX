@@ -1,6 +1,7 @@
 package Network;
 
 import Exceptions.EncryptionException;
+import Exceptions.HandleCommandException;
 import Network.Security.AesGcmEncryptor;
 import ServerFunctionalities.Enums.ExceptionServerMessages;
 import ServerFunctionalities.Enums.ResponseMessages;
@@ -29,7 +30,7 @@ public class TCPServer {
     private volatile boolean pairingMode;
 
 
-    public TCPServer(String TOKEN, String ID, String pass, boolean pairingMode) throws IOException {
+    public TCPServer(String ID,String TOKEN, String pass, boolean pairingMode) throws IOException {
         this.TOKEN = TOKEN;
         this.pass = pass;
         this.tcpServerSocket = new ServerSocket(0);
@@ -119,9 +120,7 @@ public class TCPServer {
             clientSocket.setSoTimeout(120_000);
 
             String line = clientIn.readLine();
-            if (line == null) {
-                return;
-            }
+            if(isNull(line)) return;
 
             line = AesGcmEncryptor.decrypt(line, pass);
 
@@ -142,6 +141,11 @@ public class TCPServer {
                     clientOut.println(AesGcmEncryptor.encrypt(response,pass));
                 }catch (EncryptionException e) {
                     clientOut.println(ResponseMessages.ENCRYPTION_EXCEPTION);
+                    throwException(ExceptionServerMessages.ENCRYPTION_EXCEPTION_WHILE_HANDLING_CMD);
+                    break;
+                }catch (HandleCommandException e) {
+                    clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.HANDLE_COMMAND_EXCEPTION.toString(),pass));
+                    throwException(ExceptionServerMessages.HANDLE_COMMAND_EXCEPTION);
                     break;
                 }
             }
@@ -166,43 +170,42 @@ public class TCPServer {
             clients.add(clientSocket);
             clientSocket.setSoTimeout(120_000);
             String line = clientIn.readLine();
-            if (line == null) {
-                return;
-            }
+
+            if(isNull(line)) return;
             try {
                 line = AesGcmEncryptor.decrypt(line, pass);
             }catch (EncryptionException e) {
                 clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT);
-                TCPServerListener.onPairing(false);
                 return;
             }
-
-
-            if (!line.trim().equals(TOKEN)) {
-                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(),pass));
-                TCPServerListener.onPairing(false);
+            if(!line.trim().equals(ID)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_UID.toString(),pass));
+                if (TCPServerListener != null) {
+                    TCPServerListener.onPairing(false);
+                }
                 return;
             }
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
 
             line = clientIn.readLine();
-
-            if (line == null) {
-                return;
-            }
+            if(isNull(line)) return;
             line = AesGcmEncryptor.decrypt(line, pass);
-
-            if(!line.trim().equals(ID)) {
-                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_ID.toString(),pass));
-                TCPServerListener.onPairing(false);
+            if (!line.trim().equals(TOKEN)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(),pass));
+                if (TCPServerListener != null) {
+                    TCPServerListener.onPairing(false);
+                }
                 return;
             }
 
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
 
+
             clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(),pass));
-            TCPServerListener.onPairing(true);
+            if (TCPServerListener != null) {
+                TCPServerListener.onPairing(true);
+            }
             clients.remove(clientSocket);
             switchToNormalMode();
         }catch (IOException e) {
@@ -231,5 +234,8 @@ public class TCPServer {
         if (TCPServerListener != null) {
             TCPServerListener.onException(message.toString());
         }
+    }
+    private boolean isNull(String str){
+        return str == null;
     }
 }

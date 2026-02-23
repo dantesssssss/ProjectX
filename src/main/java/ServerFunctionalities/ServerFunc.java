@@ -1,14 +1,12 @@
 package ServerFunctionalities;
 
+import Exceptions.HandleCommandException;
 import ServerFunctionalities.Enums.Os;
 import java.util.Map;
 
 public class ServerFunc {
     private static final Os COMP_OS = Os.detect();
     private static final Map<String,String> CMDS = Os.getCmds(COMP_OS);
-
-
-
 
     public static boolean validateToken(String line, String token) {
         String[] parts = line.trim().split(" ");
@@ -19,7 +17,7 @@ public class ServerFunc {
     }
 
 
-    public static String handleCommand(String line) {
+    public static String handleCommand(String line) throws HandleCommandException {
         if (line.split(" ").length != 1)
             return "UNKNOWN_COMMAND";
         try {
@@ -27,9 +25,8 @@ public class ServerFunc {
                 case "SHUTDOWN", "REBOOT", "SLEEP" -> Os.exec(COMP_OS, CMDS.get(line)) ? "SUCCESS" : "FAIL";
                 default -> "UNKNOWN_COMMAND";
             };
-        }catch(Exception e) {
-            System.out.println("Error while executing command");
-            return "Error while executing command";
+        }catch (Exception e) {
+            throw new HandleCommandException(e.getMessage());
         }
     }
 

@@ -24,7 +24,7 @@ public final class AesGcmEncryptor {
 
     private AesGcmEncryptor() {}
 
-    /** Encodes String → Base64 for QR */
+    /** Encodes String -> Base64 for QR */
     public static String encrypt(String text,String strPassword) throws EncryptionException {
         char[] password = strPassword.toCharArray();
         byte[] salt = randomBytes(SALT_LENGTH);
@@ -35,7 +35,7 @@ public final class AesGcmEncryptor {
         return packAndEncode(salt, iv, cipherText);
     }
 
-    /** decrypts Base64 from QR → String */
+    /** decrypts Base64 from QR -> String */
     public static String decrypt(String base64,String strPassword) throws EncryptionException {
 
         char[] password = strPassword.toCharArray();

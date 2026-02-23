@@ -3,10 +3,6 @@ plugins {
     `maven-publish`
 }
 
-group = "io.github.daniilaleshkivskyi"
-version = "0.0.9"
-
-
 repositories {
     mavenCentral()
 }
@@ -29,7 +25,7 @@ publishing {
         create<MavenPublication>("maven") {
             groupId = "io.github.daniilaleshkivskyi"
             artifactId = "projectx"
-            version = "0.0.9"
+            version = "0.8.9"
             from(components["java"])
         }
     }
