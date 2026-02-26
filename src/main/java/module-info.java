@@ -3,4 +3,5 @@ module ProjectX {
 
     requires java.base;
     requires java.logging;
+    requires javax.jmdns;
 }

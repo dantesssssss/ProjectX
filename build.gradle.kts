@@ -15,6 +15,7 @@ java {
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    implementation("org.jmdns:jmdns:3.6.3")
 }
 
 tasks.test {
@@ -25,7 +26,7 @@ publishing {
         create<MavenPublication>("maven") {
             groupId = "io.github.daniilaleshkivskyi"
             artifactId = "projectx"
-            version = "0.8.9"
+            version = "0.8.92"
             from(components["java"])
         }
     }

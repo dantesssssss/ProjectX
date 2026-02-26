@@ -18,7 +18,7 @@ public final class AesGcmEncryptor {
     private static final int SALT_LENGTH = 16;
     private static final int IV_LENGTH = 12;
     private static final int TAG_LENGTH = 128;
-    private static final int ITERATIONS = 100_000;
+    private static final int ITERATIONS = 600_000;
     private static final int KEY_LENGTH = 256;
     private static final SecureRandom RANDOM = new SecureRandom();
 
