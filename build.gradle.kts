@@ -9,6 +9,9 @@ repositories {
 java {
     withSourcesJar()
     withJavadocJar()
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
 }
 
 
@@ -26,7 +29,7 @@ publishing {
         create<MavenPublication>("maven") {
             groupId = "io.github.daniilaleshkivskyi"
             artifactId = "projectx"
-            version = "0.8.92"
+            version = "0.8.94"
             from(components["java"])
         }
     }

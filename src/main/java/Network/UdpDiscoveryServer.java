@@ -12,15 +12,15 @@ public class UdpDiscoveryServer {
     private int tcpPort;
     private String pcUID;
     private static Thread waitingThread;
-    private boolean makeAndroidSupport;
-    public UdpDiscoveryServer(int tcpPort, String pcUID,boolean makeAndroidSupport) {
+    private MobileDevicePlatform platform;
+    public UdpDiscoveryServer(int tcpPort, String pcUID,MobileDevicePlatform platform) {
         this.tcpPort = tcpPort;
         this.pcUID = pcUID;
-        this.makeAndroidSupport = makeAndroidSupport;
+        this.platform = platform;
     }
 
     public void startListening() {
-        if (makeAndroidSupport) {
+        if (platform == MobileDevicePlatform.ANDROID) {
             waitingThread = new Thread(() -> {
                 try (DatagramSocket socket = new DatagramSocket(DISCOVERY_PORT)) {
                     byte[] buffer = new byte[512];
@@ -80,12 +80,8 @@ public class UdpDiscoveryServer {
         waitingThread.start();
     }
 
-    public void changeSystem(String sys){
-        if ("android".equalsIgnoreCase(sys)) {
-            makeAndroidSupport = true;
-        }else if ("iOS".equalsIgnoreCase(sys)) {
-            makeAndroidSupport = false;
-        }else{}
+    public void changeSystem(MobileDevicePlatform platform) {
+        this.platform = platform;
         stopListening();
         startListening();
     }
@@ -95,14 +91,14 @@ public class UdpDiscoveryServer {
     }
 
     public void changeUID(String uid) {
-        if(!makeAndroidSupport){
+        if(platform != MobileDevicePlatform.ANDROID){
             stopListening();
             startListening();
         }
         pcUID = uid;
     }
     public void changePort(int port) {
-        if(!makeAndroidSupport){
+        if(platform != MobileDevicePlatform.ANDROID){
             stopListening();
             startListening();
         }
