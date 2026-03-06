@@ -194,7 +194,6 @@ public class TCPServer {
             clients.remove(socket);
         }
     }
-
     public void setTCPServerListener(TCPServerListener listener) {
         this.TCPServerListener = listener;
     }
@@ -213,9 +212,5 @@ public class TCPServer {
     public void setUId(String uId) {
         this.UID = uId;
     }
-    private void throwException(ExceptionServerMessages message){
-        if (TCPServerListener != null) {
-            TCPServerListener.onException(message.toString());
-        }
-    }
+    private void throwException(ExceptionServerMessages message){if (TCPServerListener != null) TCPServerListener.onException(message.toString());}
 }

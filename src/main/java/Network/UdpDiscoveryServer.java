@@ -8,77 +8,86 @@ import java.util.Map;
 
 public class UdpDiscoveryServer {
 
-    //private static final int DISCOVERY_PORT = 9999;
+    private static final int DISCOVERY_PORT = 9999;
     private int tcpPort;
     private String pcUID;
     private static Thread waitingThread;
-
-    public UdpDiscoveryServer(int tcpPort, String pcUID) {
+    private boolean makeAndroidSupport;
+    public UdpDiscoveryServer(int tcpPort, String pcUID,boolean makeAndroidSupport) {
         this.tcpPort = tcpPort;
         this.pcUID = pcUID;
+        this.makeAndroidSupport = makeAndroidSupport;
     }
 
-    /*public void startListening() {
-        waitingThread = new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket(DISCOVERY_PORT)) {
-                byte[] buffer = new byte[512];
+    public void startListening() {
+        if (makeAndroidSupport) {
+            waitingThread = new Thread(() -> {
+                try (DatagramSocket socket = new DatagramSocket(DISCOVERY_PORT)) {
+                    byte[] buffer = new byte[512];
 
-                while (true) {
-                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                    socket.receive(packet);
+                    while (true) {
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                        socket.receive(packet);
 
-                    String msg = new String(packet.getData(), 0, packet.getLength());
-                    if (msg.equals("DISCOVER_PC")) {
-                        String response = "{" +
-                                "\"RESPONSE\":"+"\"PC_FOUND\","+
-                                "\"UID\":" + "\"" + pcUID + "\"," +
-                                "\"PORT\":" + "\"" + tcpPort + "\"" +
-                                "}";
-                        byte[] respData = response.getBytes();
+                        String msg = new String(packet.getData(), 0, packet.getLength());
+                        if (msg.equals("DISCOVER_PC")) {
+                            String response = "{" +
+                                    "\"RESPONSE\":" + "\"PC_FOUND\"," +
+                                    "\"UID\":" + "\"" + pcUID + "\"," +
+                                    "\"PORT\":" + "\"" + tcpPort + "\"" +
+                                    "}";
+                            byte[] respData = response.getBytes();
 
-                        DatagramPacket responsePacket = new DatagramPacket(
-                                respData,
-                                respData.length,
-                                packet.getAddress(),
-                                packet.getPort()
-                        );
-
-                        socket.send(responsePacket);
+                            DatagramPacket responsePacket = new DatagramPacket(
+                                    respData,
+                                    respData.length,
+                                    packet.getAddress(),
+                                    packet.getPort()
+                            );
+                            socket.send(responsePacket);
+                        }
                     }
+                } catch (Exception e) {
+                    System.out.println("Error starting UDP discovery: " + e);
+                    e.printStackTrace();
+                    System.exit(1);
                 }
-            } catch (Exception e) {
-                System.out.println("Error starting UDP discovery: " + e);
-                e.printStackTrace();
-                System.exit(1);
-            }
-        });
+            });
+        }else{
+            waitingThread = new Thread(() -> {
+                try {
+                    InetAddress addr = InetAddress.getLocalHost();
+                    JmDNS jmdns = JmDNS.create(addr, "MyDesktopPC");
+
+                    Map<String, String> properties = new HashMap<>();
+                    properties.put("UID", pcUID);
+                    properties.put("PORT", "" + tcpPort);
+
+                    ServiceInfo serviceInfo = ServiceInfo.create(
+                            "_mypcapp._tcp.local.",
+                            "MyDesktopPC",
+                            9999,
+                            0, 0,
+                            properties
+                    );
+
+                    jmdns.registerService(serviceInfo);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
         waitingThread.start();
-    }*/
+    }
 
-    public void startListening(){
-        waitingThread = new Thread(() -> {
-            try {
-                InetAddress addr = InetAddress.getLocalHost();
-                JmDNS jmdns = JmDNS.create(addr, "MyDesktopPC");
-
-                Map<String, String> properties = new HashMap<>();
-                properties.put("UID", pcUID);
-                properties.put("PORT", "" + tcpPort);
-
-                ServiceInfo serviceInfo = ServiceInfo.create(
-                        "_mypcapp._tcp.local.",
-                        "MyDesktopPC",
-                        9999,
-                        0, 0,
-                        properties
-                );
-
-                jmdns.registerService(serviceInfo);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        waitingThread.start();
+    public void changeSystem(String sys){
+        if ("android".equalsIgnoreCase(sys)) {
+            makeAndroidSupport = true;
+        }else if ("iOS".equalsIgnoreCase(sys)) {
+            makeAndroidSupport = false;
+        }else{}
+        stopListening();
+        startListening();
     }
 
     public void stopListening() {
@@ -86,9 +95,17 @@ public class UdpDiscoveryServer {
     }
 
     public void changeUID(String uid) {
+        if(!makeAndroidSupport){
+            stopListening();
+            startListening();
+        }
         pcUID = uid;
     }
     public void changePort(int port) {
+        if(!makeAndroidSupport){
+            stopListening();
+            startListening();
+        }
         tcpPort = port;
     }
 }
