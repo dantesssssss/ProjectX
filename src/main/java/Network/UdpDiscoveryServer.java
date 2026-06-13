@@ -7,15 +7,24 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class UdpDiscoveryServer {
-
+    //SESSION
     private static final int DISCOVERY_PORT = 9999;
+
+    //TCP SESSION
     private int tcpPort;
-    private String pcUID;
-    private static Thread waitingThread;
+    private String desktopId;
+
+    //USER SESSION
     private MobileDevicePlatform platform;
-    public UdpDiscoveryServer(int tcpPort, String pcUID,MobileDevicePlatform platform) {
+
+    //THREADING
+    private static Thread waitingThread;
+
+
+    public UdpDiscoveryServer(int tcpPort, String desktopId, MobileDevicePlatform platform) {
         this.tcpPort = tcpPort;
-        this.pcUID = pcUID;
+        this.desktopId = desktopId;
+        //platform have to go soon, this is pain in the ass, as apple doesn't allow usual UDP connections, we will deal with it on server stage
         this.platform = platform;
     }
 
@@ -33,7 +42,7 @@ public class UdpDiscoveryServer {
                         if (msg.equals("DISCOVER_PC")) {
                             String response = "{" +
                                     "\"RESPONSE\":" + "\"PC_FOUND\"," +
-                                    "\"UID\":" + "\"" + pcUID + "\"," +
+                                    "\"UID\":" + "\"" + desktopId + "\"," +
                                     "\"PORT\":" + "\"" + tcpPort + "\"" +
                                     "}";
                             byte[] respData = response.getBytes();
@@ -50,9 +59,8 @@ public class UdpDiscoveryServer {
                 } catch (Exception e) {
                     System.out.println("Error starting UDP discovery: " + e);
                     e.printStackTrace();
-                    System.exit(1);
                 }
-            });
+            },"Discovery-Server-Thread");
         }else{
             waitingThread = new Thread(() -> {
                 try {
@@ -60,7 +68,7 @@ public class UdpDiscoveryServer {
                     JmDNS jmdns = JmDNS.create(addr, "MyDesktopPC");
 
                     Map<String, String> properties = new HashMap<>();
-                    properties.put("UID", pcUID);
+                    properties.put("UID", desktopId);
                     properties.put("PORT", "" + tcpPort);
 
                     ServiceInfo serviceInfo = ServiceInfo.create(
@@ -75,12 +83,12 @@ public class UdpDiscoveryServer {
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-            });
+            },"Discovery-Server-Thread");
         }
         waitingThread.start();
     }
 
-    public void changeSystem(MobileDevicePlatform platform) {
+    public void changeMobilePlatform(MobileDevicePlatform platform) {
         this.platform = platform;
         stopListening();
         startListening();
@@ -90,18 +98,18 @@ public class UdpDiscoveryServer {
         waitingThread.interrupt();
     }
 
-    public void changeUID(String uid) {
+    public void changeIdOfDesktop(String uid) {
+        desktopId = uid;
         if(platform != MobileDevicePlatform.ANDROID){
             stopListening();
             startListening();
         }
-        pcUID = uid;
     }
-    public void changePort(int port) {
+    public void changeTCPPort(int port) {
+        tcpPort = port;
         if(platform != MobileDevicePlatform.ANDROID){
             stopListening();
             startListening();
         }
-        tcpPort = port;
     }
 }

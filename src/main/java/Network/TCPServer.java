@@ -18,40 +18,53 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TCPServer {
-    private final ServerSocket tcpServerSocket;
-    private final InetAddress inetAddress;
-    private volatile String TOKEN;
-    private volatile String  UID;
+
+    //USER SESSION
+    private volatile String token;
+    private volatile String idOfDesktop;
+    private volatile String encryptionKey;
+
+    //SESSION
     private volatile boolean running = true;
-    private volatile String pass;
-    private final ThreadPoolExecutor clientPool;
-    private volatile TCPServerListener TCPServerListener;
+    private final ServerSocket serverSocket;
+    private final InetAddress inetAddress;
     private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
-    private Thread serverThread;
     private final AtomicBoolean pairingMode;
 
+    //THREADING
+    private final ThreadPoolExecutor clientPool;
+    private Thread serverThread;
 
-    public TCPServer(String ID,String TOKEN, String pass, boolean pairingMode) throws IOException {
-        this.TOKEN = TOKEN;
-        this.pass = pass;
-        this.tcpServerSocket = new ServerSocket(0);
+    //LISTENER
+    private volatile TCPServerListener serverListener;
+
+
+
+    public TCPServer(String idOfDesktop, String token, String encryptionKey, boolean pairingMode) throws IOException {
+        this.token = token;
+        this.idOfDesktop = idOfDesktop;
+        this.encryptionKey = encryptionKey;
+
+        this.serverSocket = new ServerSocket(0);
         //it's the best you can do to get IP of server,it may be buggy in case of VPN
-        this.inetAddress =  InetAddress.getLocalHost();
-        this.UID = ID;
+        this.inetAddress = InetAddress.getLocalHost();
         this.pairingMode = new AtomicBoolean(pairingMode);
+
+        //pool that would have the max of connections at same time = 3, and kill every thread after it's not used after 60 sec
         clientPool = new ThreadPoolExecutor(1,3,60,TimeUnit.SECONDS,new SynchronousQueue<>(),new ThreadPoolExecutor.AbortPolicy());
         clientPool.allowCoreThreadTimeOut(true);
     }
 
     public void startListening() {
         if (serverThread != null && serverThread.isAlive()) {
-            TCPServerListener.onException(ExceptionServerMessages.LISTENING_ALREADY_STARTED.toString());
+            throwException(ExceptionServerMessages.LISTENING_ALREADY_STARTED);
             return;
         }
+
         serverThread = new Thread(() -> {
             while (running) {
                 try {
-                    Socket clientSocket = tcpServerSocket.accept();
+                    Socket clientSocket = serverSocket.accept();
                     clients.add(clientSocket);
                     try {
                         if (pairingMode.get()) {
@@ -65,12 +78,12 @@ public class TCPServer {
                     }
                 } catch (IOException e) {
                     if (running) {
-                        TCPServerListener.onException(ExceptionServerMessages.NETWORK_EXCEPTION.toString());
+                        throwException(ExceptionServerMessages.NETWORK_EXCEPTION);
                     }
                     break;
                 }
             }
-        },"server-thread");
+        },"TCP-Server-Thread");
         serverThread.start();
     }
 
@@ -80,9 +93,9 @@ public class TCPServer {
             clientPool.shutdownNow();
             try {clientPool.awaitTermination(5, TimeUnit.SECONDS);} catch (InterruptedException ignored) {}
             try {
-                tcpServerSocket.close();
+                serverSocket.close();
                 for (Socket socket : clients) {
-                    try {socket.close();}catch (IOException ignored) {}
+                    try {socket.close();} catch (IOException ignored) {}
                 }
             } catch (IOException ignored) {}
         }
@@ -99,29 +112,29 @@ public class TCPServer {
             String line = clientIn.readLine();
             if(line == null) return;
 
-            line = AesGcmEncryptor.decrypt(line, pass);
+            line = AesGcmEncryptor.decrypt(line, encryptionKey);
 
 
-            if (!ServerFunc.validateToken(line,TOKEN)) {
-                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_FAIL.toString(),pass));
+            if (!ServerFunc.validateToken(line, token)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_FAIL.toString(), encryptionKey));
                 return;
             }
 
-            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_OK.toString(),pass));
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.AUTH_OK.toString(), encryptionKey));
 
             String cmd;
             String response;
             while ((cmd = clientIn.readLine()) != null) {
                 try {
-                    cmd = AesGcmEncryptor.decrypt(cmd, pass);
+                    cmd = AesGcmEncryptor.decrypt(cmd, encryptionKey);
                     response = ServerFunc.handleCommand(cmd);
-                    clientOut.println(AesGcmEncryptor.encrypt(response,pass));
+                    clientOut.println(AesGcmEncryptor.encrypt(response, encryptionKey));
                 }catch (EncryptionException e) {
                     clientOut.println(ResponseMessages.ENCRYPTION_EXCEPTION);
                     throwException(ExceptionServerMessages.ENCRYPTION_EXCEPTION_WHILE_HANDLING_CMD);
                     break;
                 }catch (HandleCommandException e) {
-                    clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.HANDLE_COMMAND_EXCEPTION.toString(),pass));
+                    clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.HANDLE_COMMAND_EXCEPTION.toString(), encryptionKey));
                     throwException(ExceptionServerMessages.HANDLE_COMMAND_EXCEPTION);
                     break;
                 }
@@ -149,43 +162,43 @@ public class TCPServer {
 
             if(line == null) return;
             try {
-                line = AesGcmEncryptor.decrypt(line, pass);
+                line = AesGcmEncryptor.decrypt(line, encryptionKey);
             }catch (EncryptionException e) {
                 clientOut.println(ResponseMessages.WRONG_ENCRYPTION_WORDS_CAN_NOT_DECRYPT);
                 return;
             }
-            if(!line.trim().equals(UID)) {
-                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_UID.toString(),pass));
-                if (TCPServerListener != null) {
-                    TCPServerListener.onPairing(false);
+            if(!line.trim().equals(idOfDesktop)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_UID.toString(), encryptionKey));
+                if (serverListener != null) {
+                    serverListener.onPairing(false);
                 }
                 return;
             }
 
-            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(), encryptionKey));
 
             line = clientIn.readLine();
             if(line == null) return;
-            line = AesGcmEncryptor.decrypt(line, pass);
-            if (!line.trim().equals(TOKEN)) {
-                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(),pass));
-                if (TCPServerListener != null) {
-                    TCPServerListener.onPairing(false);
+            line = AesGcmEncryptor.decrypt(line, encryptionKey);
+            if (!line.trim().equals(token)) {
+                clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.WRONG_TOKEN.toString(), encryptionKey));
+                if (serverListener != null) {
+                    serverListener.onPairing(false);
                 }
                 return;
             }
 
-            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(),pass));
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.OK.toString(), encryptionKey));
 
 
-            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(),pass));
-            if (TCPServerListener != null) {
-                TCPServerListener.onPairing(true);
+            clientOut.println(AesGcmEncryptor.encrypt(ResponseMessages.SUCCESS_PAIRING.toString(), encryptionKey));
+            if (serverListener != null) {
+                serverListener.onPairing(true);
             }
             pairingMode.set(false);
         }catch (IOException e) {
             if (running) {
-                TCPServerListener.onPairing(false);
+                serverListener.onPairing(false);
                 throwException(ExceptionServerMessages.NETWORK_EXCEPTION);
             }
         }catch (EncryptionException e) {
@@ -194,23 +207,23 @@ public class TCPServer {
             clients.remove(socket);
         }
     }
-    public void setTCPServerListener(TCPServerListener listener) {
-        this.TCPServerListener = listener;
+    public void setServerListener(TCPServerListener listener) {
+        this.serverListener = listener;
     }
     public InetAddress getInetAddress() {
         return inetAddress;
     }
     public int getPort() {
-        return tcpServerSocket.getLocalPort();
+        return serverSocket.getLocalPort();
     }
-    public void setPassword(String password) {
-        this.pass = password;
+    public void setEncryptionKey(String encryptionKey) {
+        this.encryptionKey = encryptionKey;
     }
     public void setToken(String token) {
-        this.TOKEN = token;
+        this.token = token;
     }
     public void setUId(String uId) {
-        this.UID = uId;
+        this.idOfDesktop = uId;
     }
-    private void throwException(ExceptionServerMessages message){if (TCPServerListener != null) TCPServerListener.onException(message.toString());}
+    private void throwException(ExceptionServerMessages message){if (serverListener != null) serverListener.onException(message.toString());}
 }
